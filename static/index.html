@@ -1,0 +1,204 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ExamGen AI</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css" />
+  <style>
+    .result-block, #editor {
+      background: #fff;
+      border-radius: 1rem;
+      padding: 1rem;
+      border: 1px solid #ccc;
+      margin-top: 1rem;
+    }
+    .opciones div { margin-left: 1rem; }
+    #pdfBtn, #keyBtn { margin-top: 1rem; }
+    .hidden { display: none; }
+    .modo-toggle-wrapper {
+      display: flex;
+      justify-content: flex-start;
+      margin-bottom: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+<main class="container">
+  <div class="modo-toggle-wrapper">
+    <button id="themeToggle" aria-label="Modo" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">🌙</button>
+  </div>
+
+  <h1 data-trad="titulo">🧠 ExamGen AI – Generador y Corrector</h1>
+
+  <label><strong data-trad="idioma">🌐 Idioma</strong>
+    <select id="langSelect">
+      <option value="es">Español</option>
+      <option value="en">English</option>
+    </select>
+  </label>
+
+  <hr />
+
+  <h3 data-trad="seccion_generar">📝 Generar Examen</h3>
+  <form id="formulario"><div id="loadingMsg" class="hidden">⏳ Generando examen, por favor esperá...</div>
+    <label data-trad="curso">Curso<input type="text" name="course" required /></label>
+    <label data-trad="tema">Tema<input type="text" name="topic" required /></label>
+    <label data-trad="objetivos">Objetivos<textarea name="objectives" required></textarea></label>
+    <label data-trad="cantidad">Nº preguntas<input type="number" name="n_questions" value="5" /></label>
+    <label data-trad="tipo">Tipo<select name="q_type"><option value="mcq">Multiple Choice</option><option value="vf">Verdadero/Falso</option></select></label>
+    <button type="submit" data-trad="generar">Generar</button>
+  </form>
+
+  <div id="editor" class="result-block hidden" contenteditable="true"></div>
+  <button id="pdfBtn" class="hidden">📄 Exportar PDF</button>
+  <button id="keyBtn" class="hidden">📑 Exportar gabarito</button>
+  <div id="keyLink" class="hidden"></div>
+
+  <hr />
+  <h3 data-trad="seccion_imagen">📷 Analizar Imagen</h3>
+  <form id="imgForm">
+    <input type="file" name="file" accept="image/*" required />
+    <button type="submit" data-trad="analizar">Analizar Imagen</button>
+  </form>
+  <div id="imagenResultado" class="result-block hidden"></div>
+
+  <footer style="text-align: center; margin-top: 2rem;">
+    <small>
+      ExamGen AI • 2025 — 
+      <a href="/static/legal.html" target="_blank">📄 Términos</a> •
+      <a href="/static/politica.html" target="_blank">🔐 Privacidad</a>
+    </small>
+    <hr class="my-2"/>
+    <p class="text-sm mt-3" data-trad="footer_apoyo"><strong>💖 ¿Te gusta ExamGen AI? Podés invitarme un café:</strong></p>
+    <div style="display:flex; justify-content:center; gap: 1rem; flex-wrap:wrap; margin-top: 0.5rem;">
+      <a href="https://cafecito.app/marianobiotico" target="_blank" rel="noopener">
+        <img src="https://cdn.cafecito.app/imgs/buttons/button_1.png" alt="Invitame un café en cafecito.app" style="height:48px; border-radius:6px;">
+      </a>
+      <a href="https://www.buymeacoffee.com/marianobiotico" target="_blank" rel="noopener">
+        <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height:48px; border-radius:6px;">
+      </a>
+    </div>
+  </footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+  let idioma = "es";
+  let examenActual = [];
+
+  
+document.getElementById("formulario").addEventListener("submit", async e => {
+  document.getElementById("loadingMsg").classList.remove("hidden");
+  document.getElementById("pdfBtn").classList.add("hidden");
+  document.getElementById("keyBtn").classList.add("hidden");
+  document.getElementById("editor").classList.add("hidden");
+
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target));
+    const res = await fetch("/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...data, output_format: "json", language: idioma }),
+    });
+    const r = await res.json();
+    examenActual = r.exam || [];
+    renderizarEditor(examenActual);
+  document.getElementById("loadingMsg").classList.add("hidden");
+  });
+
+  function renderizarEditor(examen) {
+    const cont = document.getElementById("editor");
+    cont.classList.remove("hidden");
+    document.getElementById("pdfBtn").classList.remove("hidden");
+    document.getElementById("keyBtn").classList.remove("hidden");
+    cont.innerHTML = examen.map(p =>
+      `<div class="question-block"><strong>${p.id}. ${p.question}</strong>
+      <div class="opciones">${(p.options || []).map(o => `<div>🔘 ${o}</div>`).join("")}</div>
+      <em>✔ ${p.answer}</em><br><strong>📏 Rúbrica:</strong><div class="rubrica">${
+  typeof p.rubric === "string"
+    ? p.rubric
+    : Object.entries(p.rubric || {}).map(([nivel, desc]) => `<strong>${nivel}:</strong> ${desc}`).join("<br>")
+}</div>
+</div>`).join("");
+  }
+
+  document.getElementById("pdfBtn").addEventListener("click", () => {
+    const element = document.getElementById("editor");
+    if (!element || element.classList.contains("hidden") || !element.innerText.trim()) {
+      alert("⚠️ No hay contenido visible para exportar.");
+      return;
+    }
+    html2pdf().from(element).set({
+      margin: 0.5,
+      filename: 'examen_ai.pdf',
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+    }).save();
+  });
+
+  document.getElementById("keyBtn").addEventListener("click", async () => {
+    if (!examenActual.length) return;
+    const res = await fetch("/generate-key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(examenActual),
+    });
+    const json = await res.json();
+    const linkDiv = document.getElementById("keyLink");
+    linkDiv.classList.remove("hidden");
+    linkDiv.innerHTML = `📥 <a href="${json.download_url}" target="_blank">Descargar gabarito</a>`;
+  });
+
+  document.getElementById("imgForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const form = new FormData(e.target);
+    const out = document.getElementById("imagenResultado");
+    out.classList.remove("hidden");
+    out.innerText = "⏳ Procesando imagen...";
+    try {
+      const res = await fetch("/analyze-image", { method: "POST", body: form });
+      const json = await res.json();
+      out.innerText = json.result || "No se encontró nada.";
+    } catch {
+      out.innerText = "❌ Error procesando imagen.";
+    }
+  });
+
+  document.getElementById("langSelect").addEventListener("change", e => {
+    idioma = e.target.value;
+    cargarIdioma(idioma);
+  });
+
+  async function cargarIdioma(lang) {
+    const res = await fetch(`lang/${lang}.json`);
+    const diccionario = await res.json();
+    document.querySelectorAll("[data-trad]").forEach(el => {
+      const clave = el.getAttribute("data-trad");
+      if (diccionario[clave]) {
+        const input = el.querySelector("input, textarea, select, button");
+        const contenido = diccionario[clave];
+        if (input) {
+          el.childNodes[0].textContent = contenido + " ";
+        } else {
+          el.innerText = contenido;
+        }
+      }
+    });
+  }
+
+  cargarIdioma("es");
+
+  const themeToggle = document.getElementById("themeToggle");
+  themeToggle.addEventListener("click", () => {
+    const html = document.documentElement;
+    const current = html.dataset.theme || "light";
+    html.dataset.theme = current === "dark" ? "light" : "dark";
+    themeToggle.textContent = current === "dark" ? "🌙" : "☀️";
+  });
+  document.documentElement.dataset.theme = "light";
+</script>
+</body>
+</html>
