@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from docx import Document
 from docx.shared import Pt
 import openai
+import traceback
 
 load_dotenv()
 
@@ -40,6 +41,11 @@ def serve_index():
 @app.route("/files/<filename>")
 def download_file(filename):
     return send_from_directory(FILES_DIR, filename)
+
+# ✅ Ruta para servir archivos /lang/es.json y /lang/en.json
+@app.route('/lang/<path:filename>')
+def serve_lang(filename):
+    return send_from_directory(os.path.join(STATIC_DIR, 'lang'), filename)
 
 # === Utilidades ===
 def prompt_generate(req):
@@ -94,17 +100,29 @@ def generate_exam():
             max_tokens=1500,
         )
         exam_json_str = response.choices[0].message.content.strip()
+        print("📥 Respuesta bruta del modelo:\n", exam_json_str)
+
         matches = re.findall(r"""```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```""", exam_json_str, re.DOTALL)
         if matches:
             exam_json_str = matches[0]
-        exam = json.loads(exam_json_str)
+        else:
+            print("⚠️ No se encontró bloque ```json```, se usará todo el contenido.")
+
+        try:
+            exam = json.loads(exam_json_str)
+        except Exception as json_err:
+            print("❌ Error parseando JSON:", json_err)
+            print("📄 Contenido que falló:", exam_json_str)
+            return jsonify({"error": "Error procesando la respuesta del modelo"}), 500
+
         result = {"exam": exam}
         if req.get("output_format") == "docx":
             filename = build_docx(exam, req)
             result["download_url"] = f"/files/{filename}"
         return jsonify(result)
     except Exception as e:
-        print("❌ Error en /generate:", e)
+        print("❌ Error en /generate:")
+        traceback.print_exc()
         return jsonify({"error": "Error generando el examen"}), 500
 
 @app.route("/grade", methods=["POST"])
