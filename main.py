@@ -205,6 +205,10 @@ async def generate_answer_key(exam: List[Dict[str, Any]]):
         print("❌ Error generando gabarito:", e)
         raise HTTPException(status_code=500, detail="Error al generar gabarito")
 
+@app.get("/healthz")
+async def health():
+    return {"status": "ok"}
+
 
 if __name__ == "__main__":
     import uvicorn
