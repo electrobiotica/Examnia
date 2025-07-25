@@ -1,0 +1,13 @@
+{
+  "titulo": "🧠 ExamGen AI – Generador y Corrector",
+  "idioma": "🌐 Idioma",
+  "seccion_generar": "📝 Generar Examen",
+  "curso": "Curso",
+  "tema": "Tema",
+  "objetivos": "Objetivos",
+  "cantidad": "Nº preguntas",
+  "tipo": "Tipo",
+  "generar": "Generar",
+  "seccion_imagen": "📷 Analizar Imagen",
+  "analizar": "Analizar Imagen"
+}
