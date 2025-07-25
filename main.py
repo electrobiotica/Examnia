@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from docx import Document
 from docx.shared import Pt
 import openai   # v ≥ 1.0
+from openai import OpenAIError
 
 load_dotenv()
 
@@ -92,7 +93,7 @@ def generate_exam():
             ],
             temperature=0.7,
             max_tokens=1500,
-            # response_format={"type": "json_object"}  # ← activa si quieres JSON estricto
+            # response_format={"type": "json_object"}
         )
 
         content = response.choices[0].message.content.strip()
@@ -100,8 +101,9 @@ def generate_exam():
 
         try:
             exam = json.loads(content)
-        except json.JSONDecodeError as err:
-            print("❌ JSON parse error:", err)
+        except Exception as json_err:
+            print("❌ JSON parse error:", json_err)
+            print("📄 Content:\n", content)
             return jsonify({"error": "Respuesta del modelo inválida"}), 500
 
         result = {"exam": exam}
@@ -109,9 +111,15 @@ def generate_exam():
             result["download_url"] = f"/files/{build_docx(exam, req)}"
         return jsonify(result)
 
-    except Exception:
+    except OpenAIError as openai_err:
+        print("❌ OpenAI API error:", openai_err)
+        return jsonify({"error": f"Error OpenAI: {str(openai_err)}"}), 500
+
+    except Exception as e:
+        print("❌ Error general:")
         traceback.print_exc()
         return jsonify({"error": "Error generando el examen"}), 500
+
 # -------------------------------------------------------------------
 
 @app.route("/grade", methods=["POST"])
@@ -169,6 +177,10 @@ def generate_answer_key():
         traceback.print_exc()
         return jsonify({"error": "Error generando gabarito"}), 500
 # -------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------
+
 
 @app.route("/healthz")
 def health():
