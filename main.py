@@ -3,7 +3,6 @@ import os
 import uuid
 import base64
 import json
-import re
 from dotenv import load_dotenv
 from docx import Document
 from docx.shared import Pt
@@ -42,21 +41,26 @@ def serve_index():
 def download_file(filename):
     return send_from_directory(FILES_DIR, filename)
 
-# ✅ Ruta para servir archivos /lang/es.json y /lang/en.json
 @app.route('/lang/<path:filename>')
 def serve_lang(filename):
     return send_from_directory(os.path.join(STATIC_DIR, 'lang'), filename)
 
-# === Utilidades ===
+# === Prompts ===
 def prompt_generate(req):
     return (
-        f"You are an expert assessment designer. You must reply in {req['language']}\n"
-        f"Create {req['n_questions']} {req['q_type']} questions for the following course.\n"
+        f"You are an expert educational content creator. Return only valid JSON, no explanations.\n"
+        f"Generate {req['n_questions']} {req['q_type']} questions.\n"
         f"Course: {req['course']}\n"
-        f"Topic/Unit: {req['topic']}\n"
-        f"Learning objectives: {req['objectives']}\n"
-        "For each question, include:\n"
-        "- id\n- question\n- options (if type is mcq)\n- answer\n- rubric (Excelente, Aceptable, Insuficiente).\nReturn only a JSON array."
+        f"Topic: {req['topic']}\n"
+        f"Objectives: {req['objectives']}\n"
+        f"Each question must include:\n"
+        f"- id (e.g. Q1, Q2...)\n"
+        f"- question\n"
+        f"- options (only if type is mcq)\n"
+        f"- answer\n"
+        f"- rubric (with levels: Excelente, Aceptable, Insuficiente)\n"
+        f"Return as a JSON array like:\n"
+        f"[{{\"id\":\"Q1\", \"question\":\"...\", \"options\":[\"A\",\"B\",\"C\",\"D\"], \"answer\":\"A\", \"rubric\":{{\"Excelente\":\"...\",\"Aceptable\":\"...\",\"Insuficiente\":\"...\"}}}}]"
     )
 
 def prompt_grade(req):
@@ -67,6 +71,7 @@ def prompt_grade(req):
         "Grade with a score (0-100) and feedback. Return JSON like {\"score\": X, \"feedback\": \"...\"}"
     )
 
+# === Funciones de generación ===
 def build_docx(exam, meta):
     doc = Document()
     doc.add_heading(f"Examen – {meta['course']}", level=0)
@@ -90,29 +95,25 @@ def generate_exam():
     try:
         req = request.json
         prompt = prompt_generate(req)
+
         response = openai.ChatCompletion.create(
             model=MODEL_GENERATE,
             messages=[
                 {"role": "system", "content": f"You are an assessment generator that replies in {req['language']}."},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=1500,
+            max_tokens=1500
         )
+
         exam_json_str = response.choices[0].message.content.strip()
         print("📥 Respuesta bruta del modelo:\n", exam_json_str)
-
-        matches = re.findall(r"""```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```""", exam_json_str, re.DOTALL)
-        if matches:
-            exam_json_str = matches[0]
-        else:
-            print("⚠️ No se encontró bloque ```json```, se usará todo el contenido.")
 
         try:
             exam = json.loads(exam_json_str)
         except Exception as json_err:
-            print("❌ Error parseando JSON:", json_err)
-            print("📄 Contenido que falló:", exam_json_str)
+            print("❌ Error al parsear JSON:", json_err)
+            print("📄 Contenido recibido:\n", exam_json_str)
             return jsonify({"error": "Error procesando la respuesta del modelo"}), 500
 
         result = {"exam": exam}
@@ -120,6 +121,7 @@ def generate_exam():
             filename = build_docx(exam, req)
             result["download_url"] = f"/files/{filename}"
         return jsonify(result)
+
     except Exception as e:
         print("❌ Error en /generate:")
         traceback.print_exc()
@@ -134,7 +136,7 @@ def grade_answer():
             model=MODEL_GRADE,
             messages=[
                 {"role": "system", "content": f"You are an exam corrector that responds in {req['language']}."},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": prompt}
             ],
             temperature=0.2,
             max_tokens=300,
