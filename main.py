@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory, render_template_string
+from flask import Flask, request, jsonify, send_from_directory
 import os, uuid, base64, json, traceback
 from dotenv import load_dotenv
 from docx import Document
@@ -10,12 +10,11 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='static')
 
-# === Config ===
+# === Configuración ===
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise RuntimeError("❌ OPENAI_API_KEY no está configurada en el entorno.")
 
-# ⬇️ NUEVO: instancia de cliente
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 MODEL_GENERATE = MODEL_GRADE = MODEL_VISION = "gpt-4o"
@@ -24,14 +23,11 @@ os.makedirs(FILES_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-# -------------------------------------------------------------------
+# === Rutas principales ===
+
 @app.route("/")
 def serve_index():
-    try:
-        with open(os.path.join(STATIC_DIR, "index.html"), encoding="utf-8") as f:
-            return render_template_string(f.read())
-    except FileNotFoundError:
-        return "<h1>Index.html no encontrado</h1>", 404
+    return send_from_directory(STATIC_DIR, "index.html")
 
 @app.route("/files/<filename>")
 def download_file(filename):
@@ -40,7 +36,12 @@ def download_file(filename):
 @app.route("/lang/<path:filename>")
 def serve_lang(filename):
     return send_from_directory(os.path.join(STATIC_DIR, "lang"), filename)
-# -------------------------------------------------------------------
+
+@app.route("/favicon.ico")
+def favicon():
+    return "", 204
+
+# === Prompts ===
 
 def prompt_generate(req):
     return (
@@ -77,7 +78,8 @@ def build_docx(exam, meta):
     filename = f"exam_{uuid.uuid4().hex}.docx"
     doc.save(os.path.join(FILES_DIR, filename))
     return filename
-# -------------------------------------------------------------------
+
+# === Endpoints API ===
 
 @app.route("/generate", methods=["POST"])
 def generate_exam():
@@ -89,11 +91,10 @@ def generate_exam():
             model=MODEL_GENERATE,
             messages=[
                 {"role": "system", "content": f"You are an assessment generator that replies in {req['language']}."},
-                {"role": "user",    "content": prompt}
+                {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=1500,
-            # response_format={"type": "json_object"}
+            max_tokens=1500
         )
 
         content = response.choices[0].message.content.strip()
@@ -115,12 +116,9 @@ def generate_exam():
         print("❌ OpenAI API error:", openai_err)
         return jsonify({"error": f"Error OpenAI: {str(openai_err)}"}), 500
 
-    except Exception as e:
-        print("❌ Error general:")
+    except Exception:
         traceback.print_exc()
         return jsonify({"error": "Error generando el examen"}), 500
-
-# -------------------------------------------------------------------
 
 @app.route("/grade", methods=["POST"])
 def grade_answer():
@@ -130,7 +128,7 @@ def grade_answer():
             model=MODEL_GRADE,
             messages=[
                 {"role": "system", "content": f"You are an exam corrector that replies in {req['language']}."},
-                {"role": "user",    "content": prompt_grade(req)}
+                {"role": "user", "content": prompt_grade(req)}
             ],
             temperature=0.2,
             max_tokens=300
@@ -139,7 +137,6 @@ def grade_answer():
     except Exception:
         traceback.print_exc()
         return jsonify({"error": "Error al calificar"}), 500
-# -------------------------------------------------------------------
 
 @app.route("/analyze-image", methods=["POST"])
 def analyze_image():
@@ -150,8 +147,8 @@ def analyze_image():
             model=MODEL_VISION,
             messages=[
                 {"role": "user", "content": [
-                    {"type": "text",       "text": "You are an exam corrector. Analyze this photo and extract questions and answers. Answer in Spanish."},
-                    {"type": "image_url",  "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+                    {"type": "text", "text": "You are an exam corrector. Analyze this photo and extract questions and answers. Answer in Spanish."},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
                 ]}
             ],
             max_tokens=1000
@@ -160,7 +157,6 @@ def analyze_image():
     except Exception:
         traceback.print_exc()
         return jsonify({"error": "Error analizando la imagen"}), 500
-# -------------------------------------------------------------------
 
 @app.route("/generate-key", methods=["POST"])
 def generate_answer_key():
@@ -176,15 +172,12 @@ def generate_answer_key():
     except Exception:
         traceback.print_exc()
         return jsonify({"error": "Error generando gabarito"}), 500
-# -------------------------------------------------------------------
-
-
-# -------------------------------------------------------------------
-
 
 @app.route("/healthz")
 def health():
     return {"status": "ok"}
 
+# === Ejecución ===
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
