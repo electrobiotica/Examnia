@@ -52,8 +52,11 @@
   </form>
 
   <div id="editor" class="result-block hidden" contenteditable="true"></div>
-  <button id="pdfBtn" class="hidden">📄 Exportar PDF</button>
-  <button id="keyBtn" class="hidden">📑 Exportar gabarito</button>
+  <button id="pdfBtn">📄 Exportar Examen PDF</button>
+  <button id="docxBtn">📝 Exportar Examen DOCX</button>
+  <button id="pdfKeyBtn">📄 Exportar Gabarito PDF</button>
+  <button id="keyBtn">📑 Exportar Gabarito DOCX</button>
+
   <div id="keyLink" class="hidden"></div>
 
   <hr />
@@ -199,6 +202,54 @@ document.getElementById("formulario").addEventListener("submit", async e => {
     themeToggle.textContent = current === "dark" ? "🌙" : "☀️";
   });
   document.documentElement.dataset.theme = "light";
+
+  function exportarComoPDF(htmlContent, filename = "archivo.pdf") {
+  const contenedor = document.createElement("div");
+  contenedor.innerHTML = htmlContent;
+  html2pdf().set({
+    margin: 0.5,
+    filename: filename,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+  }).from(contenedor).save();
+}
+
+document.getElementById("pdfBtn").addEventListener("click", () => {
+  const html = document.getElementById("editor")?.innerHTML || "";
+  if (!html.trim()) return alert("⚠️ No hay contenido visible.");
+  exportarComoPDF(html, "examen_ai.pdf");
+});
+
+document.getElementById("pdfKeyBtn").addEventListener("click", async () => {
+  if (!examenActual.length) return;
+  const contenido = examenActual.map(p => `<p><strong>${p.id}:</strong> ${p.answer}</p>`).join("");
+  exportarComoPDF(`<h2>Gabarito</h2>${contenido}`, "gabarito.pdf");
+});
+
+document.getElementById("docxBtn").addEventListener("click", async () => {
+  const res = await fetch("/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...Object.fromEntries(new FormData(document.getElementById("formulario"))), output_format: "docx", language: idioma }),
+  });
+  const json = await res.json();
+  if (json.download_url) window.open(json.download_url, "_blank");
+  else alert("❌ Error exportando DOCX.");
+});
+
+document.getElementById("keyBtn").addEventListener("click", async () => {
+  if (!examenActual.length) return;
+  const res = await fetch("/generate-key", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(examenActual),
+  });
+  const json = await res.json();
+  if (json.download_url) window.open(json.download_url, "_blank");
+  else alert("❌ Error exportando gabarito.");
+});
+
 </script>
 </body>
 </html>
