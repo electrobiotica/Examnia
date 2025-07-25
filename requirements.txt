@@ -1,4 +1,4 @@
-flask
-openai
+Flask==3.0.2
 python-docx
+openai
 python-dotenv
